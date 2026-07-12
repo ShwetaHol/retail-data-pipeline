@@ -1,0 +1,5 @@
+select
+    product_id,
+    product_category_name as category,
+    product_weight_g as weight_g
+from {{ source('raw', 'products') }}

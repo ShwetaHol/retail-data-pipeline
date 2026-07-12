@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: fct_sales
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+      - name: price
+        tests:
+          - not_null
