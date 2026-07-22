@@ -1,0 +1,5 @@
+defaultProject: retail-pipeline-502300
+defaultDataset: dataform
+defaultLocation: US
+defaultAssertionDataset: dataform_assertions
+dataformCoreVersion: 3.0.52
