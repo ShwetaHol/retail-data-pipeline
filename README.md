@@ -5,7 +5,7 @@ An **end-to-end batch data pipeline** that loads **~100,000 real e-commerce orde
 transformation layer is built **twice, in dbt and in Dataform**, on the same data. This shows
 both the **warehouse-agnostic** approach (dbt) and the **BigQuery-native** one (Dataform).
 
-**Stack:** Python, BigQuery (GCP), dbt, Dataform, DuckDB, SQL, Git
+**Stack:** Python, BigQuery (GCP), dbt, Dataform, Airflow, Docker, DuckDB, SQL, Git
 
 ---
 
@@ -220,14 +220,65 @@ schedule to run the release automatically.
 
 ---
 
+## Orchestration with Airflow
+
+The dbt pipeline is orchestrated by **Apache Airflow**, running locally via **Docker Compose**
+(scheduler, webserver, Celery worker, triggerer, Postgres metadata database, and Redis broker).
+
+The DAG (`airflow/dags/retail_pipeline.py`) defines two tasks with a dependency between them:
+
+```
+dbt_run  ->  dbt_test
+```
+
+- **Schedule:** daily at 06:00 (`0 6 * * *`), with `catchup=False` so it does not backfill
+  historical runs from the DAG start date.
+- **Tasks:** `BashOperator` tasks invoking `dbt run` and `dbt test` against the mounted dbt project.
+- **Dependency:** `dbt_run >> dbt_test`, so tests only execute against a successfully built model set.
+
+### Container setup
+
+Airflow is Linux-only, so the stack runs as **Windows -> WSL2 -> Docker -> Airflow containers**.
+Three things had to be bridged into the container:
+
+| Need | Solution |
+|------|----------|
+| dbt is not in the base Airflow image | A custom image (`airflow/Dockerfile`) extending `apache/airflow:2.10.5` with `dbt-bigquery` |
+| The dbt project lives on the host | Bind mount: `../retail_dbt` to `/opt/airflow/retail_dbt` |
+| GCP credentials live on the host | Bind mount of the local gcloud config, so dbt's `method: oauth` works unchanged |
+
+A container-specific `profiles.yml` (`airflow/dbt_profiles/`) is mounted to `/home/airflow/.dbt`.
+It targets BigQuery only, because the host profile's relative DuckDB path is meaningless inside
+a container.
+
+**A note on dependency conflicts.** Installing dbt into the Airflow image upgraded `click`, which
+broke Celery's worker startup (`nodesplit` failing on a `None` node name) and left the worker in a
+restart loop while tasks sat queued. The fix was pinning `click<8.2` after the dbt install. This is
+a common hazard when extending Airflow images: a shared transitive dependency is pulled forward by
+the new package and breaks Airflow itself.
+
+### Running Airflow
+
+```bash
+cd airflow
+docker compose build
+docker compose up -d
+# UI at http://localhost:8080  (airflow / airflow)
+```
+
+---
+
 ## Known Limitations and Next Steps
 
 The honest scope of the current build, and what production-grade would add:
 
-- **Orchestration is partial.** dbt runs are triggered manually. Dataform has a **release
-  configuration** (`production`, tracking `main`) that is **run on demand**; automatic scheduling
-  needs a billing-enabled project, as explained above. The natural next step is orchestrating the
-  ingest, run, and test sequence with **Dagster or Airflow**.
+- **Ingestion sits outside the DAG.** Airflow orchestrates `dbt run` and `dbt test`; the Python
+  ingestion step still runs separately, since it would need its own dependencies and mounts inside
+  the Airflow image. Adding it as a first task is the natural next step.
+- **Airflow runs locally only.** The stack runs via Docker Compose on a single machine. A production
+  deployment would use a managed service such as **Cloud Composer** or **Astronomer**.
+- **Dataform scheduling is on demand.** Its release configuration (`production`, tracking `main`) is
+  run manually; automatic scheduling needs a billing-enabled project, as explained above.
 - **The mart is a view.** `fct_sales` rebuilds its four-way join on every query. Materialising it
   **as a table** would compute the join once at build time.
 - **Full refresh only.** Models rebuild from scratch each run. Converting `fct_sales` to an
