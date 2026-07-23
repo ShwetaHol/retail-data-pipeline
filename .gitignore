@@ -219,3 +219,9 @@ __marimo__/
 
 data/
 *.duckdb
+
+airflow/logs/
+airflow/plugins/
+airflow/config/
+
+.user.yml

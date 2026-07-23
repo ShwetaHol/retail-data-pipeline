@@ -1,0 +1,10 @@
+retail_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: retail-pipeline-502300
+      dataset: analytics
+      location: US
+      threads: 4

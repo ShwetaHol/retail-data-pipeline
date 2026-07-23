@@ -1,0 +1,12 @@
+# Ingestion
+duckdb
+google-cloud-bigquery
+
+# Transformation
+dbt-duckdb
+dbt-bigquery
+
+# Orchestration
+dagster
+dagster-webserver
+dagster-dbt
