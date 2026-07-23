@@ -195,13 +195,39 @@ same `raw` data, building its models into the `dataform` dataset.
 
 ---
 
+## Orchestration in Dataform
+
+Unlike dbt, which needs a **separate orchestrator**, Dataform has **scheduling built into GCP**.
+Its two moving parts are:
+
+- A **release configuration**, which compiles the project from a Git branch into a runnable version.
+  This repo has one named `production`, tracking `main`.
+- A **workflow configuration**, which runs a compiled release on a **cron schedule**.
+
+In this project the release configuration is **executed on demand** rather than on a schedule.
+That is a **deliberate consequence of staying on the free BigQuery sandbox**: Dataform only enables
+**automatic** releases for repositories connected to a **third-party Git host** such as GitHub, and
+that connection requires a **personal access token stored in Secret Manager**, which in turn requires
+a **billing-enabled project**. The chain is:
+
+```
+automatic scheduling  ->  GitHub connection  ->  token in Secret Manager  ->  billing enabled
+```
+
+On a billing-enabled project the remaining steps would be to connect the Dataform repository to this
+GitHub repo, store the access token in Secret Manager, and add a workflow configuration with a cron
+schedule to run the release automatically.
+
+---
+
 ## Known Limitations and Next Steps
 
 The honest scope of the current build, and what production-grade would add:
 
-- **Orchestration is partial.** dbt runs are triggered manually. The natural next step is
-  scheduling the ingest, run, and test sequence with an orchestrator such as **Dagster or Airflow**.
-  Dataform has **native scheduling** built into GCP.
+- **Orchestration is partial.** dbt runs are triggered manually. Dataform has a **release
+  configuration** (`production`, tracking `main`) that is **run on demand**; automatic scheduling
+  needs a billing-enabled project, as explained above. The natural next step is orchestrating the
+  ingest, run, and test sequence with **Dagster or Airflow**.
 - **The mart is a view.** `fct_sales` rebuilds its four-way join on every query. Materialising it
   **as a table** would compute the join once at build time.
 - **Full refresh only.** Models rebuild from scratch each run. Converting `fct_sales` to an
